@@ -107,7 +107,8 @@ class DistributedAlgorithm(ABC):
                     port = msg[1]
                     if port == self.ALLPORTS:
                         for edge in node.edges():
-                            addOrAppend(messages, edge.target, (msg[0], edge.targetPort) )
+                            target = edge.getAdjacentNode(node)
+                            addOrAppend(messages, target, (msg[0], edge.portNumberForNode(target) ) )
                     else:
                         (targetNode, targetPort) = node.getAdjacentByPortNumber(port)
                         addOrAppend(messages, targetNode, (msg[0], targetPort) )

@@ -187,8 +187,8 @@ def drawNode(surface, node, doHighlight = False):
 
 def drawEdge(surface, edge):
     
-    (x0, y0) = edge.source.pos
-    (x1, y1) = edge.target.pos
+    (x0, y0) = edge.node0WithPort()[0].pos
+    (x1, y1) = edge.node1WithPort()[0].pos
     dx = x1 - x0
     dy = y1 - y0
     mag = math.hypot(dx, dy)
@@ -201,12 +201,12 @@ def drawEdge(surface, edge):
     portX = x0 + circle_radius * 2 * dxMag
     portY = y0 + circle_radius * 2 * dyMag
     
-    drawText(surface, 15, str(edge.sourcePort), (portX, portY), True, RED)
+    drawText(surface, 15, str(edge.node0WithPort()[1]), (portX, portY), True, RED)
     
     portX = x1 - circle_radius * 2 * dxMag
     portY = y1 - circle_radius * 2 * dyMag
     
-    drawText(surface, 15, str(edge.targetPort), (portX, portY), True, RED)
+    drawText(surface, 15, str(edge.node1WithPort()[1]), (portX, portY), True, RED)
     
 def drawText(surface, fontSize, text, pos, center = True, color = BLACK):
     font = pygame.font.SysFont('Arial', fontSize)

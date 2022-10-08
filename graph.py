@@ -30,17 +30,29 @@ class Graph:
         self.nodes.remove(node)
       
         edgesToRemove = node.edges()
+        nodesToCheckPortNumbering = set()
         for edge in edgesToRemove:
             for e in self.edges:
-                if e.undirectedSame(edge):
+                if e.sameAs(edge):
+                    anotherNode = edge.nodes() - set([node])
+                    
+                    if len(nodesToCheckPortNumbering) == 0:
+                        nodesToCheckPortNumbering = anotherNode
+                    else:
+                        nodesToCheckPortNumbering.update( anotherNode )
+                    
                     self.edges.remove(e)
                     break
+         
+        # decrease the port numbers of those nodes which had the removed edge
+        for node in list(nodesToCheckPortNumbering):
+            node.updatePortNumbering()
                
     def addEdge(self, node1, node2):
-        existing = next((x for x in self.edges if ((x.target == node1 and x.source == node2) or (x.target == node2 and x.source == node1))), None)
+        existing = next((x for x in self.edges if set(x.nodes()) == set([node1, node2])), None)
         
         if existing == None:
-            edge = Edge(self, node1, node1.degree() + 1, node2, node2.degree() + 1)
+            edge = UndirectedEdge(self, node1, node1.degree() + 1, node2, node2.degree() + 1)
             self.edges.append(edge)
             return edge
         
@@ -82,39 +94,68 @@ class Node:
     def degree(self):
         return len(self.edges())
      
-    # note: this does not necessarily return pointer to the original edge
     def edges(self):
-        edges = []
-        for edge in self.graph.edges:
-            if edge.source == self:
-                edges.append( edge )
-            elif edge.target == self:
-                edges.append( edge.flipped() )
-        return edges
+        return list(filter(lambda a: self in a.nodes(), self.graph.edges))
         
-    def adjacentNodes(self):
-        return list(map(lambda x: x.target if (x.source == self) else x.source, self.edges()))
-        
-    def getAdjacentByPortNumber(self, port):
+    def edgeByPortNumber(self, port):
         for edge in self.edges():
-            if edge.sourcePort == port:
-                return (edge.target, edge.targetPort)
+            if edge.portNumberForNode(self) == port:
+                return edge
         return None
         
-       
-class Edge:
+    # returns tuple (node, port)
+    def getAdjacentByPortNumber(self, port):
+        edge = self.edgeByPortNumber(port)
+        adj = edge.getAdjacentNode(self)
+        adjport = edge.portNumberForNode(adj)
+        return (adj, adjport)
+        
+    def numberOfPorts(self):
+        return max(list(map(lambda a: a.portNumberForNode(self), self.edges() )), default = 0)
+        
+    def updatePortNumbering(self):
+        if self.degree() < self.numberOfPorts():
+            for i in range(1, self.degree() + 1):
+                if not self.hasPortNumber(i):
+                    edge = self.edgeByPortNumber(self.numberOfPorts())
+                    edge.newPortNumberForNode(self, i)
+                    return
+        
+    def hasPortNumber(self, port):
+        exist = next((x for x in self.edges() if x.portNumberForNode(self) == port), None)
+        return exist != None    
+          
+class UndirectedEdge:
     def __init__(self, graph, node1, node1Port, node2, node2Port):
         self.graph = graph
-        self.source = node1
-        self.sourcePort = node1Port
-        self.target = node2
-        self.targetPort = node2Port
+        self.nodesWithPorts = [(node1, node1Port), (node2, node2Port)]
         
-    def flipped(self):
-        return Edge(self.graph, self.target, self.targetPort, self.source, self.sourcePort) 
+    def node0WithPort(self):
+        return self.nodesWithPorts[0]
+    
+    def node1WithPort(self):
+        return self.nodesWithPorts[1]
         
-    def undirectedSame(self, edge):
-        sourceMatch = (self.source == edge.source) and (self.sourcePort == edge.sourcePort) and (self.target == edge.target) and (self.targetPort == edge.targetPort)
-        targetMatch = (self.target == edge.source) and (self.targetPort == edge.sourcePort) and (self.source == edge.target) and (self.sourcePort == edge.targetPort)
-                      
-        return (sourceMatch or targetMatch) and (self.graph == edge.graph)
+    def getAdjacentNode(self, node):
+        if node == self.node0WithPort()[0]:
+            return self.node1WithPort()[0]
+        else:
+            return self.node0WithPort()[0]
+        
+    def portNumberForNode(self, node):
+        if node == self.node0WithPort()[0]:
+            return self.node0WithPort()[1]
+        else:    
+            return self.node1WithPort()[1]
+            
+    def newPortNumberForNode(self, node, port):
+        if node == self.node0WithPort()[0]:
+            self.nodesWithPorts[0] = (self.nodesWithPorts[0][0], port)
+        else:
+            self.nodesWithPorts[1] = (self.nodesWithPorts[1][0], port)
+    
+    def nodes(self):
+        return set(map(lambda a: a[0], self.nodesWithPorts))
+        
+    def sameAs(self, edge):
+        return set(self.nodes()) == set(edge.nodes())
