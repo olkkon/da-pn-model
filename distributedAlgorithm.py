@@ -1,5 +1,4 @@
 
-import threading
 import copy
 from abc import ABC, abstractmethod
 
@@ -9,6 +8,29 @@ class State:
     def __init__(self, name, desc):
         self.name = name
         self.desc = desc
+        self.strparams = lambda: []
+    
+    def __str__(self):
+        return self.toString()
+        
+    def toString(self):
+        strpar = self.strparams()
+        strparlen = len(strpar)
+    
+        if strparlen == 0:
+            return self.name
+        else:
+            output = self.name + "("
+            for index in range(strparlen - 1):
+                output += str(strpar[index]) + ","
+                
+            output += str(strpar[strparlen - 1]) + ")"
+            return output
+        
+def copyState(algorithm, state):
+    copiedState = copy.copy(state)
+    copiedState.strparams = lambda: algorithm.strparamsByState(copiedState)
+    return copiedState
         
 def statesEqual(state1, state2):
     return state1.name == state2.name
@@ -20,9 +42,6 @@ def stateInStoppingStates(state, stoppingStates):
     return False
     
 #############################################
-
-SIMULATION_SPEED = 1.0
-DEBUG_ROUND_COUNT = 5
 
 def addOrAppend(dic, key, value):
     if key in dic.keys():
@@ -73,68 +92,88 @@ class DistributedAlgorithm(ABC):
         
     # by the way, messages msg are tuples (MSG, port)
         
-    ############# driver functions #############
-    def run(self):         
-        try:
-            algo_input = self.input()
-        except AssertionError:
-            print('The input graph does not meet the requirements')
-            return
+    # returns variables to be printed for the state
+    @abstractmethod
+    def strparamsByState(self, state):
+        pass
         
-        states = {}
-        for node in self.graph.nodes:
-            states[node] = self.init(node.color, node.degree())
+    ############# driver functions #############
+    def runOneRound(self):         
          
         def allNodesInStoppingState():
+            
+            if len(self.beforeRoundStates) == 0:
+                return False
+            
             stoppingStates = self.output()
-            for state in states.values():
+            for state in self.beforeRoundStates.values():
                 if not stateInStoppingStates(state, stoppingStates):
                     return False
                     
             return True
-                
-        # runs one round of the distributed algorithm
-        def simulate():        
-            if allNodesInStoppingState() or (self.counter >= DEBUG_ROUND_COUNT):
-                return states
-                
-            # send messages
-            messages = {}
-            for node in self.graph.nodes:
-                msg = self.send(states[node], node.degree()) 
-                if msg != ():
-                    # messages = dictionary: receiver node -> list[(msg, target port)]
-                    port = msg[1]
-                    if port == self.ALLPORTS:
-                        for edge in node.edges():
-                            target = edge.getAdjacentNode(node)
-                            addOrAppend(messages, target, (msg[0], edge.portNumberForNode(target) ) )
-                    else:
-                        (targetNode, targetPort) = node.getAdjacentByPortNumber(port)
-                        addOrAppend(messages, targetNode, (msg[0], targetPort) )
-                    
-            # receive messages and change state
-            for node in self.graph.nodes:
-                if node in messages.keys():
-                    V = messages[node]
-                else:
-                    V = []
-                    
-                states[node] = self.receive(states[node], V, node.degree())
-        
-            threading.Timer(SIMULATION_SPEED, simulate).start()
-            self.counter += 1
+         
+        if allNodesInStoppingState():
+            print('Running tried even though all nodes are in stopped states!')
+            return
+         
+        if not self.running:
+            self.initializeInternalState()
+            self.running = True
+            internalStates = self.beforeRoundStates
+        else:
+            internalStates = self.afterRoundStates
             
-        # start the algorithm
-        simulate()
+        # send messages
+        messages = {}
+        for node in self.graph.nodes:
+            msg = self.send(internalStates[node], node.degree()) 
+            if msg != ():
+                # messages = dictionary: receiver node -> list[(msg, target port)]
+                port = msg[1]
+                if port == self.ALLPORTS:
+                    for edge in node.edges():
+                        target = edge.getAdjacentNode(node)
+                        addOrAppend(messages, target, (msg[0], edge.portNumberForNode(target) ) )
+                else:
+                    (targetNode, targetPort) = node.getAdjacentByPortNumber(port)
+                    addOrAppend(messages, targetNode, (msg[0], targetPort) )
+                
+        # receive messages and change state
+        for node in self.graph.nodes:
+            if node in messages.keys():
+                V = messages[node]
+            else:
+                V = []
+                
+            self.afterRoundStates[node] = self.receive(internalStates[node], V, node.degree())
+    
+        self.counter += 1
+        
+        if allNodesInStoppingState():
+            self.running = False
+         
+    def initializeInternalState(self):
+        try:
+            algo_input = self.input()
+        except AssertionError:
+            print('The input graph does not meet the requirements')
+                        
+        for node in self.graph.nodes:
+            self.beforeRoundStates[node] = self.init(node.color, node.degree())
         
     def __init__(self, desc, graph):
         self.graph = graph
         self.desc = desc
         self.counter = 0
-        
+        self.running = False
+        self.beforeRoundStates = {}
+        self.afterRoundStates = {}
+           
     def reset(self):
         self.counter = 0
+        self.running = False
+        self.beforeRoundStates = {}
+        self.afterRoundStates = {}
         
         
 # message encodings
@@ -161,9 +200,10 @@ class BipartiteMaximalMatching(DistributedAlgorithm):
 
     def init(self, input_, d):
         if input_ == min(self.input()):
-            return copy.copy(self.WUR)
+            return copyState(self, self.WUR)
         else:
-            result = copy.copy(self.BUR)
+            result = copyState(self, self.BUR)
+            result.M = set()
             result.X = set([i for i in range(1, d + 1)])
             return result
             
@@ -195,9 +235,10 @@ class BipartiteMaximalMatching(DistributedAlgorithm):
         if statesEqual(state, self.WUR):
             acceptMessage = next((x for x in messages if x[0] == ACCEPT), None)
             if (state.k % 2 != 0) and (state.k > d):
-                return copy.copy(self.US)
+                return copyState(self, self.US)
             elif (acceptMessage != None):
-                result = copy.copy(self.MR)
+                result = copyState(self, self.MR)
+                result.k = state.k + 1
                 result.i = acceptMessage[1]
                 return result
             else:
@@ -208,25 +249,25 @@ class BipartiteMaximalMatching(DistributedAlgorithm):
             if not k_even:
                 proposals_messages = list(filter(lambda x: x[0] == PROPOSAL, messages))
                 proposals = set(map(lambda x: x[1], proposals_messages))
-                accepts_messages = list(filter(lambda x: x[0] == ACCEPT, messages))
-                accepts = set(map(lambda x: x[1], accepts_messages))
+                matched_messages = list(filter(lambda x: x[0] == MATCHED, messages))
+                matched = set(map(lambda x: x[1], matched_messages))
                 
                 state.k += 1
                 state.M.update(proposals)
-                state.X = state.X - accepts
+                state.X = state.X - matched
                 return state
             elif k_even and (len(state.M) > 0):
-                result = copy.copy(self.MS)
+                result = copyState(self, self.MS)
                 result.i = min(state.M)
                 return result
             elif k_even and (len(state.X) == 0):
-                return copy.copy(self.US)
+                return copyState(self, self.US)
             else:
                 state.k += 1
                 return state
         elif statesEqual(state, self.MR):
             if (state.k % 2 != 0):
-                result = copy.copy(self.MS)
+                result = copyState(self, self.MS)
                 result.i = state.i
                 return result
             else:
@@ -236,26 +277,42 @@ class BipartiteMaximalMatching(DistributedAlgorithm):
             return state
         elif statesEqual(state, self.MS):
             return state
+            
+    def strparamsByState(self, state):
+        if statesEqual(state, self.WUR):
+            return [state.k]
+        elif statesEqual(state, self.BUR):
+            return [state.k, list(state.M), list(state.X)]
+        elif statesEqual(state, self.MR):
+            return [state.k, state.i]
+        elif statesEqual(state, self.US):
+            return []
+        elif statesEqual(state, self.MS):
+            return [state.i]
         
-    def __init__(self, desc, graph):
-        DistributedAlgorithm.__init__(self, desc, graph)
-         
+    def __init__(self, graph):
+    
         # define the states for the problem
         self.WUR = State('WUR', 'White unmatched running')
-        self.WUR.k = 1
+        self.WUR.k = 0
+        self.WUR.strparams = lambda: self.strparamsByState(self.WUR)
         
         self.BUR = State('BUR', 'Black unmatched running')
-        self.BUR.k = 1
+        self.BUR.k = 0
         self.BUR.M = set()
-        self.BUR.X = set() # caller needs to init this, as it's degree dependent
+        self.BUR.X = set()
+        self.BUR.strparams = lambda: self.strparamsByState(self.BUR)
         
         self.MR = State('MR', 'Matched running')
-        self.MR.k = 1
+        self.MR.k = 0
         self.MR.i = -1
+        self.MR.strparams = lambda: self.strparamsByState(self.MR)
         
         self.US = State('US', 'Unmatched stopped')
 
         self.MS = State('MS', 'Matched stopped')
         self.MS.i = -1
-        
+        self.MS.strparams = lambda: self.strparamsByState(self.MS)
     
+        DistributedAlgorithm.__init__(self, "Bipartite Maximal Matching", graph)
+        

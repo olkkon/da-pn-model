@@ -91,6 +91,9 @@ class Node:
         self.pos = pos
         self.color = color
         
+    def __str__(self):
+        return self.name
+        
     def degree(self):
         return len(self.edges())
      

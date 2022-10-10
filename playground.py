@@ -12,6 +12,7 @@ BUTTON_LEFT = 1
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED = (255, 0, 0)
+LIGHTGREY = (192, 192, 192)
 
 # colors for node coloring. White is default and thus not counting in the coloring sense
 GREEN = (153, 255, 51)
@@ -43,14 +44,18 @@ graph.addEdge(node4, node1)
 running = True
 running_algo = False
 selected_node = None
-selected_problem = BipartiteMaximalMatching("Bipartite Maximal Matching", graph)
+selected_problem = BipartiteMaximalMatching(graph)
 
 # data structure for buttons in the UI
 class Button:
     def __init__(self, name, left, top, width, height):
         self.name = name
         self.pos = ((left, top), (width, height))
+        # onClick event
         self.action = lambda: print('not assigned')
+        self.visible = True
+        # if this evaluates to True, the button is disabled
+        self.grayCondition = lambda: False
 
     def left(self):
         return self.pos[0][0]
@@ -68,21 +73,36 @@ class Button:
         self.action()
 
 buttons = []
-buttons.append( Button("Run the algorithm", playgroundBorderX + 30, 100, 250, 50) )
-buttons.append( Button("Clear", playgroundBorderX + 300, 100, 100, 50) ) 
+
+runButton = Button("Run the algorithm", playgroundBorderX + 30, 100, 250, 50)
+runButton.grayCondition = lambda: running_algo
+buttons.append( runButton )
+
+clearButton = Button("Clear", playgroundBorderX + 300, 100, 100, 50)
+buttons.append( clearButton )
+
+nextRoundButton = Button("Next round", playgroundBorderX + 150, 200, 150, 50)
+nextRoundButton.grayCondition = lambda: not selected_problem.running
+nextRoundButton.visible = False
+buttons.append( nextRoundButton )
 
 def run_algo():
     global running_algo
     running_algo = True
-    selected_problem.run()
+    selected_problem.runOneRound()
     
 def clear():
     global running_algo
     running_algo = False
     selected_problem.reset()
+    
+def nextRound():
+    if running_algo:
+        selected_problem.runOneRound()
 
 buttons[0].action = run_algo
 buttons[1].action = clear
+buttons[2].action = nextRound
 
 def main():
     global running, running_algo, selected_node
@@ -102,7 +122,7 @@ def main():
             if event.type == QUIT:
                 running = False
             elif event.type == MOUSEBUTTONDOWN and event.button == BUTTON_RIGHT:
-                if positionInsidePlayground(event.pos):
+                if positionInsidePlayground(event.pos) and not running_algo:
                     graph.addNode(event.pos)
             elif event.type == MOUSEBUTTONDOWN and event.button == BUTTON_LEFT:
                 if positionInsidePlayground(event.pos):
@@ -121,16 +141,16 @@ def main():
                             if selected_node == selection:
                                 selected_node = None
                             # construct an edge
-                            else:
+                            elif not running_algo:
                                 graph.addEdge(selected_node, selection)
                                 selected_node = None
                 
                 else:
                     for button in buttons:
-                        if positionInsideButton(event.pos, button):
+                        if button.visible and positionInsideButton(event.pos, button) and not button.grayCondition():
                             button.execute()
                     
-            elif event.type == KEYDOWN:
+            elif event.type == KEYDOWN and not running_algo:
                 if event.key == K_DELETE:
                     if selected_node != None:
                         graph.deleteNode(selected_node)
@@ -151,12 +171,31 @@ def drawHelpBox(surface):
     pygame.draw.line(surface, BLACK, (playgroundBorderX, 0), (playgroundBorderX, height))
     drawText(surface, 20, "Selected problem: " + selected_problem.desc, (playgroundBorderX + 30, 30), False)
     
-    for button in buttons:
-        drawButton(surface, button.name, button)
-        
     if running_algo:
+        buttons[2].visible = True
         drawText(surface, 15, "Follow console for possible errors in the run", (playgroundBorderX + 30, 170), False)
-        drawText(surface, 20, "Round: " + str(selected_problem.counter), (playgroundBorderX + 30, 300), False)
+        drawText(surface, 20, "Round: " + str(selected_problem.counter), (playgroundBorderX + 30, 210), False)
+        
+        drawText(surface, 20, "Node", (playgroundBorderX + 50, 280), False)
+        drawText(surface, 20, "State before", (playgroundBorderX + 120, 280), False)
+        drawText(surface, 20, "State after", (playgroundBorderX + 300, 280), False)
+        pygame.draw.line(surface, BLACK, (playgroundBorderX + 40, 310), (playgroundBorderX + 450, 310))
+        
+        for index, node in enumerate(selected_problem.beforeRoundStates.keys()):
+            drawText(surface, 20, str(node), (playgroundBorderX + 50, 320 + index * 30), False) 
+            drawText(surface, 20, str(selected_problem.beforeRoundStates[node]), (playgroundBorderX + 120, 320 + index * 30), False)
+            drawText(surface, 20, str(selected_problem.afterRoundStates[node]), (playgroundBorderX + 300, 320 + index * 30), False)
+        
+    else:
+        buttons[2].visible = False
+    
+    for button in buttons:
+        if button.visible:
+            if button.grayCondition():
+                drawButton(surface, button.name, button, True)
+            else:
+                drawButton(surface, button.name, button)
+                
      
 def updateScreen(surface):
     surface.fill(WHITE)
@@ -218,8 +257,12 @@ def drawText(surface, fontSize, text, pos, center = True, color = BLACK):
     else:
         surface.blit(textSurf, pos)
         
-def drawButton(surface, text, button):
-    pygame.draw.rect(surface, BLACK, button.pos, 1)
+def drawButton(surface, text, button, disabled = False):
+    if disabled:
+        pygame.draw.rect(surface, LIGHTGREY, button.pos)
+    else:
+        pygame.draw.rect(surface, BLACK, button.pos, 1)
+        
     drawText(surface, 20, text, ((button.left() + button.width() / 2), (button.top() + button.height() / 2)))
         
 def positionInsidePlayground(pos):
