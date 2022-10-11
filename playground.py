@@ -2,7 +2,7 @@
 import pygame, sys, math
 from pygame.locals import *
 from graph import *
-from distributedAlgorithm import *
+from algorithms import *
 
 (width, height) = (1200, 600)
 
@@ -176,14 +176,14 @@ def drawHelpBox(surface):
         drawText(surface, 15, "Follow console for possible errors in the run", (playgroundBorderX + 30, 170), False)
         drawText(surface, 20, "Round: " + str(selected_problem.counter), (playgroundBorderX + 30, 210), False)
         
-        drawText(surface, 20, "Node", (playgroundBorderX + 50, 280), False)
-        drawText(surface, 20, "State before", (playgroundBorderX + 120, 280), False)
+        drawText(surface, 20, "Node", (playgroundBorderX + 30, 280), False)
+        drawText(surface, 20, "State before", (playgroundBorderX + 100, 280), False)
         drawText(surface, 20, "State after", (playgroundBorderX + 300, 280), False)
-        pygame.draw.line(surface, BLACK, (playgroundBorderX + 40, 310), (playgroundBorderX + 450, 310))
+        pygame.draw.line(surface, BLACK, (playgroundBorderX + 20, 310), (playgroundBorderX + 450, 310))
         
         for index, node in enumerate(selected_problem.beforeRoundStates.keys()):
-            drawText(surface, 20, str(node), (playgroundBorderX + 50, 320 + index * 30), False) 
-            drawText(surface, 20, str(selected_problem.beforeRoundStates[node]), (playgroundBorderX + 120, 320 + index * 30), False)
+            drawText(surface, 20, str(node), (playgroundBorderX + 30, 320 + index * 30), False) 
+            drawText(surface, 20, str(selected_problem.beforeRoundStates[node]), (playgroundBorderX + 100, 320 + index * 30), False)
             drawText(surface, 20, str(selected_problem.afterRoundStates[node]), (playgroundBorderX + 300, 320 + index * 30), False)
         
     else:
