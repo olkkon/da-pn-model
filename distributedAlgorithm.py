@@ -177,6 +177,9 @@ class DistributedAlgorithm(ABC):
         self.running = False
         self.beforeRoundStates = {}
         self.afterRoundStates = {}
+        
+    def __str__(self):
+        return self.desc
            
     def reset(self):
         self.counter = 0
