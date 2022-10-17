@@ -6,6 +6,8 @@ BLACK = (0, 0, 0)
 RED = (255, 0, 0)
 LIGHTGREY = (192, 192, 192)
 
+DEFAULT_TEXT_SIZE = 20
+
 def drawText(surface, fontSize, text, pos, center = True, color = BLACK):
     font = pg.font.SysFont('Arial', fontSize)
     textSurf = font.render(text, True, color)
@@ -52,15 +54,15 @@ class Button():
         else:
             pg.draw.rect(surface, BLACK, self.pos, 1)
             
-        drawText(surface, 20, self.name, ((self.left() + self.width() / 2), (self.top() + self.height() / 2)))
+        drawText(surface, DEFAULT_TEXT_SIZE, self.name, ((self.left() + self.width() / 2), (self.top() + self.height() / 2)))
                 
 # taken from https://stackoverflow.com/questions/59236523/trying-creating-dropdown-menu-pygame-but-got-stuck
 # slighty modified by me
 
-COLOR_INACTIVE = (100, 80, 255)
-COLOR_ACTIVE = (100, 200, 255)
-COLOR_LIST_INACTIVE = (255, 100, 100)
-COLOR_LIST_ACTIVE = (255, 150, 150)
+COLOR_INACTIVE = (223, 229, 247)
+COLOR_ACTIVE = (175, 192, 239)
+COLOR_LIST_INACTIVE = (108, 130, 191)
+COLOR_LIST_ACTIVE = (105, 113, 134)
 
 class DropDown():
 
@@ -75,10 +77,19 @@ class DropDown():
         self.draw_menu = False
         self.menu_active = False
         self.active_option = -1
+        
+    def fontWithTextFittedToRect(self, text):
+        for size in range(DEFAULT_TEXT_SIZE, 1, -1):
+            font = pg.font.SysFont('Arial', size)
+            
+            if font.size(text)[0] < self.rect.width:
+                return font
+                
+        return self.font
 
     def draw(self, surf):
         pg.draw.rect(surf, self.color_menu[self.menu_active], self.rect, 0)
-        msg = self.font.render(self.main, 1, (0, 0, 0))
+        msg = self.fontWithTextFittedToRect(self.main).render(self.main, 1, (0, 0, 0))
         surf.blit(msg, msg.get_rect(center = self.rect.center))
 
         if self.draw_menu:
@@ -86,7 +97,7 @@ class DropDown():
                 rect = self.rect.copy()
                 rect.y += (i+1) * self.rect.height
                 pg.draw.rect(surf, self.color_option[1 if i == self.active_option else 0], rect, 0)
-                msg = self.font.render(text, 1, (0, 0, 0))
+                msg = self.fontWithTextFittedToRect(text).render(text, 1, (0, 0, 0))
                 surf.blit(msg, msg.get_rect(center = rect.center))
 
     def update(self, event_list):

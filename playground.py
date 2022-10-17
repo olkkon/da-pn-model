@@ -54,7 +54,7 @@ algoList = DropDown(
     [COLOR_INACTIVE, COLOR_ACTIVE],
     [COLOR_LIST_INACTIVE, COLOR_LIST_ACTIVE],
     playgroundBorderX + 30, 30, 200, 50, 
-    pg.font.SysFont('Arial', 20), 
+    pg.font.SysFont('Arial', DEFAULT_TEXT_SIZE), 
     "Select problem", list(map(lambda a: str(a), problems)))
 
 def selectedProblem():
@@ -64,7 +64,7 @@ def selectedProblem():
         return problems[algoList.options.index(algoList.main)]
 
 runButton = Button("Run", playgroundBorderX + 240, 30, 100, 50)
-runButton.grayCondition = lambda: running_algo
+runButton.grayCondition = lambda: running_algo or (selectedProblem() == None)
 buttons.append( runButton )
 
 clearButton = Button("Clear", playgroundBorderX + 350, 30, 100, 50)
@@ -98,7 +98,7 @@ def nextRound():
         selectedProblem().runOneRound()
 
 buttons[0].action = run_algo
-buttons[1].action = clearUI(True)
+buttons[1].action = lambda: clearUI(True)
 buttons[2].action = nextRound
 
 def main():
@@ -175,17 +175,17 @@ def drawHelpBox():
     if running_algo:
         buttons[2].visible = True
         drawText(surface, 15, "Follow console for possible errors in the run", (playgroundBorderX + 30, 170), False)
-        drawText(surface, 20, "Round: " + str(selectedProblem().counter), (playgroundBorderX + 30, 210), False)
+        drawText(surface, DEFAULT_TEXT_SIZE, "Round: " + str(selectedProblem().counter), (playgroundBorderX + 30, 210), False)
         
-        drawText(surface, 20, "Node", (playgroundBorderX + 30, 280), False)
-        drawText(surface, 20, "State before", (playgroundBorderX + 100, 280), False)
-        drawText(surface, 20, "State after", (playgroundBorderX + 300, 280), False)
+        drawText(surface, DEFAULT_TEXT_SIZE, "Node", (playgroundBorderX + 30, 280), False)
+        drawText(surface, DEFAULT_TEXT_SIZE, "State before", (playgroundBorderX + 100, 280), False)
+        drawText(surface, DEFAULT_TEXT_SIZE, "State after", (playgroundBorderX + 300, 280), False)
         pg.draw.line(surface, BLACK, (playgroundBorderX + 20, 310), (playgroundBorderX + 450, 310))
         
         for index, node in enumerate(selectedProblem().beforeRoundStates.keys()):
-            drawText(surface, 20, str(node), (playgroundBorderX + 30, 320 + index * 30), False) 
-            drawText(surface, 20, str(selectedProblem().beforeRoundStates[node]), (playgroundBorderX + 100, 320 + index * 30), False)
-            drawText(surface, 20, str(selectedProblem().afterRoundStates[node]), (playgroundBorderX + 300, 320 + index * 30), False)
+            drawText(surface, DEFAULT_TEXT_SIZE, str(node), (playgroundBorderX + 30, 320 + index * 30), False) 
+            drawText(surface, DEFAULT_TEXT_SIZE, str(selectedProblem().beforeRoundStates[node]), (playgroundBorderX + 100, 320 + index * 30), False)
+            drawText(surface, DEFAULT_TEXT_SIZE, str(selectedProblem().afterRoundStates[node]), (playgroundBorderX + 300, 320 + index * 30), False)
         
     else:
         buttons[2].visible = False
