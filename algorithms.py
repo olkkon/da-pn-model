@@ -224,15 +224,15 @@ class MinimumVertexCover3Approximation(DistributedAlgorithm):
         if (v1 == None) or (v2 == None):
             raise Exception('can not receive messages: virtual network structure is incomplete')
         
-        v1_msg = {}
-        v2_msg = {}
+        v1_msg = []
+        v2_msg = []
         
         for msg in messages:
-            addOrAppend(v1_msg, v1, (msg[0][1], msg[1]))
-            addOrAppend(v2_msg, v2, (msg[0][0], msg[1]))
-                   
-        v1_msg = list(filter(lambda a: a[0] != SIM_EMPTY_MESSAGE, v1_msg.items()))
-        v2_msg = list(filter(lambda a: a[0] != SIM_EMPTY_MESSAGE, v2_msg.items()))
+            v1_msg.append( (msg[0][1], msg[1]) )
+            v2_msg.append( (msg[0][0], msg[1]) )
+               
+        v1_msg = list(filter(lambda a: a[0] != SIM_EMPTY_MESSAGE, v1_msg))
+        v2_msg = list(filter(lambda a: a[0] != SIM_EMPTY_MESSAGE, v2_msg))
         
         self.virtualProblem.setNewStateBasedOnMessages(v1, v1_msg)
         v1_new = self.virtualProblem.afterRoundStates[v1]
@@ -289,7 +289,7 @@ class MinimumVertexCover3Approximation(DistributedAlgorithm):
         elif state.equalTo(self.V2Running):
             return [state.state1, state.state2]
         elif state.equalTo(self.BothStopped):
-            return [self.output]
+            return [state.output]
         else:    
             return []
         
