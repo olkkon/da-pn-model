@@ -155,6 +155,10 @@ def main():
                     if selected_node != None:
                         selected_node.color = COLOR_KEYS.index(event.key) + 1
                         selected_node = None
+                elif event.key == K_0:
+                    if selected_node != None:
+                        selected_node.color = 0
+                        selected_node = None
                         
             updateScreen()
             
@@ -185,7 +189,9 @@ def drawHelpBox():
         for index, node in enumerate(selectedProblem().beforeRoundStates.keys()):
             drawText(surface, DEFAULT_TEXT_SIZE, str(node), (playgroundBorderX + 30, 320 + index * 30), False) 
             drawText(surface, DEFAULT_TEXT_SIZE, str(selectedProblem().beforeRoundStates[node]), (playgroundBorderX + 100, 320 + index * 30), False)
-            drawText(surface, DEFAULT_TEXT_SIZE, str(selectedProblem().afterRoundStates[node]), (playgroundBorderX + 300, 320 + index * 30), False)
+            
+            if node in selectedProblem().afterRoundStates.keys():
+                drawText(surface, DEFAULT_TEXT_SIZE, str(selectedProblem().afterRoundStates[node]), (playgroundBorderX + 300, 320 + index * 30), False)
         
     else:
         buttons[2].visible = False

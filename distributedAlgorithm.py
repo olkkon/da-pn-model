@@ -3,6 +3,12 @@ import copy
 import math
 from abc import ABC, abstractmethod
 
+# a special flag to announce that message will be sent to all ports
+ALLPORTS = 100100
+
+# a special flag used in simulation to show as empty message
+SIM_EMPTY_MESSAGE = -1
+
 # abstract base class for states. Caller will initialize internal variables
 class State:
     def __init__(self, name, desc):
@@ -55,6 +61,9 @@ def stateInStoppingStates(state, stoppingStates):
 
 def addOrAppend(dic, key, value):
     if key in dic.keys():
+        if value in dic[key]:
+            raise Exception('duplicate port number for messages detected')
+            
         dic[key].append( value )
     else:
         dic[key] = [ value ]
@@ -62,12 +71,15 @@ def addOrAppend(dic, key, value):
 # abstract base class for distributed algorithms
 class DistributedAlgorithm(ABC):
 
-    # a special flag to announce that message will be sent to all ports
-    ALLPORTS = 100100
-
     # input is the set of local inputs
     @abstractmethod
     def input(self):
+        pass
+        
+    # validate input (for example: require that it's bipartite)
+    # gets input from function above
+    @abstractmethod
+    def validateInput(self):
         pass
         
     # states is the set of states
@@ -87,7 +99,7 @@ class DistributedAlgorithm(ABC):
 
     # init: input -> states initializes the state machine
     @abstractmethod
-    def init(self, input_, d):
+    def init(self, name, input_, d):
         pass
 
     # send: states -> msg constructs outgoing messages
@@ -96,56 +108,46 @@ class DistributedAlgorithm(ABC):
         pass
         
     # receive: states x msg -> states processes incoming messages
-    @abstractmethod
-    def receive(self, state, messages, d):
-        pass
-        
     # by the way, messages msg are tuples (MSG, port)
+    @abstractmethod
+    def receive(self, nodeName, state, messages, d):
+        pass
         
     # returns internal variables for the state
     @abstractmethod
     def paramsByState(self, state):
         pass
         
-    ############# driver functions #############
-    def runOneRound(self):         
-         
-        def allNodesInStoppingState(states):
+    def virtualNodeByName(self, name, number):
+        if not self.virtual:
+            raise Exception('Can not query for simulation nodes without simulation!')
             
-            if len(states) == 0:
-                return False
-            
-            stoppingStates = self.output()
-            for state in states.values():
-                if not stateInStoppingStates(state, stoppingStates):
-                    return False
-                    
-            return True
-         
-        if allNodesInStoppingState(self.beforeRoundStates):
+        return self.virtualNetwork.nodeByName(name + '_' + str(number))
+      
+    # FOR INTERNAL USE ONLY
+    def beforeRun(self):
+        if self.allNodesInStoppingState(self.beforeRoundStates):
             print('Running tried even though all nodes are in stopped states!')
-            return
-         
+            return False
+        
         if not self.running:
-            self.initializeInternalState()
-            self.running = True
+            if not self.initializeInternalState():
+                return False
+            else:
+                self.running = True
         else:
             self.beforeRoundStates = copyStates(self, self.afterRoundStates)
             
+        return True
+      
+    # normal running mode (without simulation)
+    def runOneRound(self):         
+          
+        if not self.beforeRun():
+            return
+             
         # send messages
-        messages = {}
-        for node in self.graph.nodes:
-            msg = self.send(self.beforeRoundStates[node], node.degree()) 
-            if msg != ():
-                # messages = dictionary: receiver node -> list[(msg, target port)]
-                port = msg[1]
-                if port == self.ALLPORTS:
-                    for edge in node.edges():
-                        target = edge.getAdjacentNode(node)
-                        addOrAppend(messages, target, (msg[0], edge.portNumberForNode(target) ) )
-                else:
-                    (targetNode, targetPort) = node.getAdjacentByPortNumber(port)
-                    addOrAppend(messages, targetNode, (msg[0], targetPort) )
+        messages = self.mapOutgoingToIncoming(self.constructOutgoingMessages())
                 
         # receive messages and change state
         for node in self.graph.nodes:
@@ -154,29 +156,144 @@ class DistributedAlgorithm(ABC):
             else:
                 V = []
                 
-            self.afterRoundStates[node] = self.receive(self.beforeRoundStates[node], V, node.degree())
+            self.setNewStateBasedOnMessages(node, V)
     
         self.counter += 1
         
-        if allNodesInStoppingState(self.afterRoundStates):
+        if self.allNodesInStoppingState(self.afterRoundStates):
             self.running = False
-         
-    def initializeInternalState(self):
-        try:
-            algo_input = self.input()
-        except AssertionError:
-            print('The input graph does not meet the requirements')
-                        
-        for node in self.graph.nodes:
-            self.beforeRoundStates[node] = self.init(node.color, node.degree())
+              
+    # simulation running mode
+    def runOneRoundSimulated(self):
         
-    def __init__(self, desc, graph):
+        if not self.virtual:
+            print('Virtual network- and problem required to run simulations!')
+            return
+            
+        if not self.beforeRun() or not self.virtualProblem.beforeRun():
+            return
+                
+        virtualMessages = self.virtualProblem.constructOutgoingMessages()
+        
+        # send messages
+        messages = {}
+        for node in self.graph.nodes:
+            v1 = self.virtualNodeByName(node.name, 1)
+            v2 = self.virtualNodeByName(node.name, 2)
+            
+            v1_sends = v1 in virtualMessages.keys()
+            v2_sends = v2 in virtualMessages.keys()
+            
+            if v1_sends and v2_sends:
+                for port in node.portNumbering():
+                    v1_msg = next((x for x in virtualMessages[v1] if (x[1] == port)), SIM_EMPTY_MESSAGE)
+                    v2_msg = next((x for x in virtualMessages[v2] if (x[1] == port)), SIM_EMPTY_MESSAGE)
+                    msg = (v1_msg, v2_msg)
+                    
+                    if msg != (SIM_EMPTY_MESSAGE,SIM_EMPTY_MESSAGE):
+                        addOrAppend(messages, node, (msg, port))                        
+            elif v1_sends:
+                for msg in virtualMessages[v1]:
+                    addOrAppend(messages, node, ((msg[0],SIM_EMPTY_MESSAGE), msg[1]))
+            elif v2_sends:
+                for msg in virtualMessages[v2]:
+                    addOrAppend(messages, node, ((SIM_EMPTY_MESSAGE,msg[0]), msg[1]))
+                          
+        incoming = self.mapOutgoingToIncoming(messages)
+                
+        # receive messages and change state  
+        for node in self.graph.nodes:
+            if node in incoming.keys():
+                V = incoming[node]
+            else:
+                V = []
+                
+            self.afterRoundStates[node] = self.receive(node.name, self.beforeRoundStates[node], V, node.degree())
+    
+        self.counter += 1
+        self.virtualProblem.counter += 1
+        
+        if self.allNodesInStoppingState(self.afterRoundStates):
+            self.running = False 
+            
+        if self.virtualProblem.allNodesInStoppingState(self.virtualProblem.afterRoundStates):
+            self.virtualProblem.running = False 
+
+         
+    # FOR INTERNAL USE ONLY
+    def initializeInternalState(self):
+        if not self.validateInput():
+            print('The input graph does not meet the requirements')
+            return False
+            
+        if self.virtual:
+            self.initializeVirtual()
+            
+        for node in self.graph.nodes:
+            self.beforeRoundStates[node] = self.init(node.name, node.color, node.degree())
+            
+        return True
+            
+    # FOR INTERNAL USE ONLY
+    # dict: sending node -> list[(msg, port)]
+    def constructOutgoingMessages(self):
+        messages = {}
+        for node in self.graph.nodes:
+            msg = self.send(self.beforeRoundStates[node], node.degree()) 
+            if msg != ():
+                port = msg[1]
+                if port == ALLPORTS:
+                    for edge in node.edges():
+                        addOrAppend(messages, node, (msg[0], edge.portNumberForNode(node) ) )
+                else:
+                    addOrAppend(messages, node, (msg[0], port) )
+                    
+        return messages
+     
+    # FOR INTERNAL USE ONLY
+    # dict: sending node -> list[(msg, port)] becomes dict: receiving node -> list[(msg, port)]
+    def mapOutgoingToIncoming(self, outgoing):
+        incoming = {}
+        for index, node in enumerate(outgoing.keys()):
+            for msg in outgoing[node]:
+                (adj, j) = node.getAdjacentByPortNumber(msg[1])
+                addOrAppend(incoming, adj, (msg[0], j))
+        
+        return incoming
+        
+    # FOR INTERNAL USE ONLY
+    def setNewStateBasedOnMessages(self, node, V):
+        self.afterRoundStates[node] = self.receive(node.name, self.beforeRoundStates[node], V, node.degree())
+        
+    # FOR INTERNAL USE ONLY
+    def allNodesInStoppingState(self, states):
+        if len(states) == 0:
+            return False
+        
+        stoppingStates = self.output()
+        for state in states.values():
+            if not stateInStoppingStates(state, stoppingStates):
+                return False
+                
+        return True
+        
+    # to be called always before running simulation, since the underlying graph might
+    # have changed..
+    @abstractmethod
+    def initializeVirtual(self):
+        pass
+        
+    def __init__(self, desc, graph, virtual):
         self.graph = graph
         self.desc = desc
         self.counter = 0
         self.running = False
         self.beforeRoundStates = {}
         self.afterRoundStates = {}
+        self.virtual = virtual
+        
+        if virtual:
+            self.initializeVirtual()
         
     def __str__(self):
         return self.desc
@@ -186,3 +303,6 @@ class DistributedAlgorithm(ABC):
         self.running = False
         self.beforeRoundStates = {}
         self.afterRoundStates = {}
+        
+        if self.virtual:
+            self.virtualProblem.reset()
