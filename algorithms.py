@@ -46,7 +46,7 @@ class BipartiteMaximalMatching(DistributedAlgorithm):
             result.X = set([i for i in range(1, d + 1)])
             return result
             
-    def send(self, state, d):
+    def send(self, nodeName, state, d):
         if state.equalTo(self.WUR):
             evenRound = (state.r % 2 == 0)
             k = math.floor(state.r / 2) + (state.r % 2)
@@ -174,6 +174,7 @@ class MinimumVertexCover3Approximation(DistributedAlgorithm):
     def input(self):
         pass
         
+    # no input validation
     def validateInput(self):
         return True
         
@@ -185,7 +186,13 @@ class MinimumVertexCover3Approximation(DistributedAlgorithm):
         return [self.BothStopped]
         
     def msg(self):
-        pass
+        result = []
+        
+        for msg1 in self.virtualProblem.msg():
+            for msg2 in self.virtualProblem.msg():
+                result.append( (msg1, msg2) )
+                
+        return result
 
     def init(self, name, input_, d):
         v1 = self.virtualNodeByName(name, 1)
@@ -200,11 +207,24 @@ class MinimumVertexCover3Approximation(DistributedAlgorithm):
         
         return result
 
-    # simulation algorithm does not determine anything to send by itself. Instead,
-    # sending is based on simulated algorithms doing the actual calculation. So we skip
-    # this function and do the thing in runOneRoundSimulated
-    def send(self, state, d):
-        pass
+    def send(self, nodeName, state, d):
+        v1 = self.virtualNodeByName(nodeName, 1)
+        v2 = self.virtualNodeByName(nodeName, 2)
+        
+        if (v1 == None) or (v2 == None):
+            raise Exception('send failed: virtual network structure is incomplete')
+    
+        v1_msg = self.virtualProblem.send(v1.name, state.state1, v1.degree())
+        v2_msg = self.virtualProblem.send(v2.name, state.state2, v2.degree())
+    
+        if state.equalTo(self.BothRunning):         
+            return (v1_msg, v2_msg)
+        elif state.equalTo(self.V1Running):
+            return (v1_msg, SIM_EMPTY_MESSAGE)
+        elif state.equalTo(self.V2Running):
+            return (SIM_EMPTY_MESSAGE, v2_msg)
+        elif state.equalTo(self.BothStopped):
+            return (SIM_EMPTY_MESSAGE, SIM_EMPTY_MESSAGE)
         
     def receive(self, nodeName, state, messages, d):
     

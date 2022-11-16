@@ -104,7 +104,7 @@ class DistributedAlgorithm(ABC):
 
     # send: states -> msg constructs outgoing messages
     @abstractmethod
-    def send(self, state, d):
+    def send(self, nodeName, state, d):
         pass
         
     # receive: states x msg -> states processes incoming messages
@@ -146,18 +146,7 @@ class DistributedAlgorithm(ABC):
         if not self.beforeRun():
             return
              
-        # send messages
-        messages = self.mapOutgoingToIncoming(self.constructOutgoingMessages())
-                
-        # receive messages and change state
-        for node in self.graph.nodes:
-            if node in messages.keys():
-                V = messages[node]
-            else:
-                V = []
-                
-            self.setNewStateBasedOnMessages(node, V)
-    
+        self.sendAndReceiveMessages()
         self.counter += 1
         
         if self.allNodesInStoppingState(self.afterRoundStates):
@@ -173,43 +162,8 @@ class DistributedAlgorithm(ABC):
         if not self.beforeRun() or not self.virtualProblem.beforeRun():
             return
                 
-        virtualMessages = self.virtualProblem.constructOutgoingMessages()
+        self.sendAndReceiveMessages()
         
-        # send messages
-        messages = {}
-        for node in self.graph.nodes:
-            v1 = self.virtualNodeByName(node.name, 1)
-            v2 = self.virtualNodeByName(node.name, 2)
-            
-            v1_sends = v1 in virtualMessages.keys()
-            v2_sends = v2 in virtualMessages.keys()
-            
-            if v1_sends and v2_sends:
-                for port in node.portNumbering():
-                    v1_msg = next((x for x in virtualMessages[v1] if (x[1] == port)), SIM_EMPTY_MESSAGE)
-                    v2_msg = next((x for x in virtualMessages[v2] if (x[1] == port)), SIM_EMPTY_MESSAGE)
-                    msg = (v1_msg, v2_msg)
-                    
-                    if msg != (SIM_EMPTY_MESSAGE,SIM_EMPTY_MESSAGE):
-                        addOrAppend(messages, node, (msg, port))                        
-            elif v1_sends:
-                for msg in virtualMessages[v1]:
-                    addOrAppend(messages, node, ((msg[0],SIM_EMPTY_MESSAGE), msg[1]))
-            elif v2_sends:
-                for msg in virtualMessages[v2]:
-                    addOrAppend(messages, node, ((SIM_EMPTY_MESSAGE,msg[0]), msg[1]))
-                          
-        incoming = self.mapOutgoingToIncoming(messages)
-                
-        # receive messages and change state  
-        for node in self.graph.nodes:
-            if node in incoming.keys():
-                V = incoming[node]
-            else:
-                V = []
-                
-            self.afterRoundStates[node] = self.receive(node.name, self.beforeRoundStates[node], V, node.degree())
-    
         self.counter += 1
         self.virtualProblem.counter += 1
         
@@ -219,6 +173,21 @@ class DistributedAlgorithm(ABC):
         if self.virtualProblem.allNodesInStoppingState(self.virtualProblem.afterRoundStates):
             self.virtualProblem.running = False 
 
+    # FOR INTERNAL USE ONLY
+    def sendAndReceiveMessages(self):
+    
+        # send messages
+        messages = self.mapOutgoingToIncoming(self.constructOutgoingMessages())
+                
+        # receive messages and change state
+        for node in self.graph.nodes:
+            if node in messages.keys():
+                V = messages[node]
+            else:
+                V = []
+                
+            self.setNewStateBasedOnMessages(node, V)
+            
          
     # FOR INTERNAL USE ONLY
     def initializeInternalState(self):
@@ -237,16 +206,62 @@ class DistributedAlgorithm(ABC):
     # FOR INTERNAL USE ONLY
     # dict: sending node -> list[(msg, port)]
     def constructOutgoingMessages(self):
+    
+        # A little helper functions to reduce the boilerplate below
+        def addForAllPorts(messages, node, message, doubleMessage = None, doubleMessagePort = None):
+            for edge in node.edges():
+                port = edge.portNumberForNode(node)
+                
+                if port == doubleMessagePort:
+                    addOrAppend(messages, node, (doubleMessage, port ) )
+                else:
+                    addOrAppend(messages, node, (message, port ) )
+                    
+        def constructMessagesForSingleNode(messages, node, port, msg):
+            if port == ALLPORTS:
+                addForAllPorts(messages, node, msg)   
+            else:
+                addOrAppend(messages, node, (msg, port) )
+    
         messages = {}
         for node in self.graph.nodes:
-            msg = self.send(self.beforeRoundStates[node], node.degree()) 
-            if msg != ():
-                port = msg[1]
-                if port == ALLPORTS:
-                    for edge in node.edges():
-                        addOrAppend(messages, node, (msg[0], edge.portNumberForNode(node) ) )
-                else:
-                    addOrAppend(messages, node, (msg[0], port) )
+            msg = self.send(node.name, self.beforeRoundStates[node], node.degree()) 
+            
+            # Both V1 or V2 can send one message or message to all ports or no message at all
+            # this adds complexity to this part of the code
+            
+            if self.virtual:              
+                v1_sends = (msg[0] != SIM_EMPTY_MESSAGE) and (msg[0] != ())
+                v2_sends = (msg[1] != SIM_EMPTY_MESSAGE) and (msg[1] != ())
+            
+                if v1_sends and v2_sends:
+                    port1 = msg[0][1]
+                    port2 = msg[1][1]
+                    msg1 = msg[0][0]
+                    msg2 = msg[1][0]
+                    
+                    if port1 == ALLPORTS and port2 == ALLPORTS:
+                        addForAllPorts(messages, node, (msg1, msg2)) 
+                    elif port1 == ALLPORTS:
+                        addForAllPorts(messages, node, (msg1, SIM_EMPTY_MESSAGE), (msg1, msg2), port2)          
+                    elif port2 == ALLPORTS:
+                        addForAllPorts(messages, node, (SIM_EMPTY_MESSAGE, msg2), (msg1, msg2), port1)  
+                    else:
+                        if port1 == port2:
+                            addOrAppend(messages, node, ((msg1, msg2), port1 ) )
+                        else:
+                            addOrAppend(messages, node, ((msg1, SIM_EMPTY_MESSAGE), port1 ) )
+                            addOrAppend(messages, node, ((SIM_EMPTY_MESSAGE, msg2), port2 ) )
+
+                elif v1_sends:
+                    constructMessagesForSingleNode(messages, node, msg[0][1], (msg[0][0], SIM_EMPTY_MESSAGE))
+                        
+                elif v2_sends:
+                    constructMessagesForSingleNode(messages, node, msg[1][1], (SIM_EMPTY_MESSAGE, msg[1][0]))
+                    
+            else:
+                if msg != ():
+                    constructMessagesForSingleNode(messages, node, msg[1], msg[0])
                     
         return messages
      
